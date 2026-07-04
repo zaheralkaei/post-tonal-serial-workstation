@@ -29,6 +29,20 @@ function absToPitch(abs: AbsPitch): { step: string; alter: number; octave: numbe
   return { step, alter: alter + frac, octave };
 }
 
+// MusicXML accidental glyph names, including quarter-tone microtones.
+function accidentalName(alter: number): string | null {
+  switch (alter) {
+    case 0.5: return 'quarter-sharp';
+    case 1: return 'sharp';
+    case 1.5: return 'three-quarters-sharp';
+    case 2: return 'double-sharp';
+    case -0.5: return 'quarter-flat';
+    case -1: return 'flat';
+    case -1.5: return 'three-quarters-flat';
+    default: return null; // 0 => natural, not printed
+  }
+}
+
 function noteType(durDiv: number, divPerQuarter: number): string {
   const q = durDiv / divPerQuarter;
   if (q >= 4) return 'whole';
@@ -98,17 +112,24 @@ export function toMusicXML(score: ScoreModel): string {
     }
     const type = noteType(seg.dur, divPerQuarter);
     if (seg.pitch === undefined) {
-      return `        <note>\n          <rest/>\n          <duration>${seg.dur}</duration>\n          <type>${type}</type>\n        </note>`;
+      return (
+        `        <note>\n          <rest/>\n          <duration>${seg.dur}</duration>\n` +
+        `          <voice>1</voice>\n          <type>${type}</type>\n        </note>`
+      );
     }
     const { step, alter, octave } = absToPitch(seg.pitch);
     const alterEl = alter !== 0 ? `\n            <alter>${alter}</alter>` : '';
+    const acc = accidentalName(alter);
+    // Suppress the accidental on the tail of a tie (it's already shown on the start).
+    const accEl = acc && !seg.tieStop ? `\n          <accidental>${acc}</accidental>` : '';
     const notations = tiedEls.length ? `\n          <notations>${tiedEls.join('')}</notations>` : '';
     return (
       `        <note>\n` +
       `          <pitch>\n            <step>${step}</step>${alterEl}\n            <octave>${octave}</octave>\n          </pitch>\n` +
       `          <duration>${seg.dur}</duration>\n` +
       tieEls.map((t) => `          ${t}\n`).join('') +
-      `          <type>${type}</type>${notations}\n` +
+      `          <voice>1</voice>\n` +
+      `          <type>${type}</type>${accEl}${notations}\n` +
       `        </note>`
     );
   };

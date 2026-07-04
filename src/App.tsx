@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type {
   DurationPalette,
   GenParams,
@@ -15,6 +15,7 @@ import { toMusicXML } from './export/musicxml';
 import { createPlayer } from './audio/scheduler';
 import { makeRng } from './core/rng';
 import { pcName, isQuarter } from './ui/format';
+import { SheetMusic } from './ui/SheetMusic';
 
 const PATHS: Path[] = ['P', 'R', 'I', 'RI', 'diagDown', 'diagUp'];
 const UNITS: NoteValue[] = ['8n', '16n', '32n'];
@@ -23,6 +24,21 @@ function resize<T>(arr: T[], n: number, fill: T): T[] {
   if (arr.length === n) return arr;
   if (arr.length > n) return arr.slice(0, n);
   return [...arr, ...Array(n - arr.length).fill(fill)];
+}
+
+interface Composition {
+  matrix: ReturnType<typeof buildMatrix>;
+  score: ReturnType<typeof assemble>;
+  xml: string;
+  sig: string;
+}
+
+/** Build a full composition snapshot from the current inputs. */
+function generate(series: Series, palette: DurationPalette, fullParams: GenParams): Composition {
+  const matrix = buildMatrix(series, fullParams.matrixMode);
+  const score = assemble(matrix, palette, fullParams);
+  const xml = toMusicXML(score);
+  return { matrix, score, xml, sig: JSON.stringify({ series, palette, fullParams }) };
 }
 
 export function App() {
@@ -44,6 +60,12 @@ export function App() {
     dispersion: 0.3,
     voiceLeading: true,
     voiceAllocation: { mode: 'manual', map: { violinI: 'P', violinII: 'I', viola: 'R', cello: 'RI' } },
+    durationTransforms: {
+      violinI: { reverse: false, rotate: 0 },
+      violinII: { reverse: false, rotate: 0 },
+      viola: { reverse: false, rotate: 0 },
+      cello: { reverse: true, rotate: 0 },
+    },
     tempoBpm: 120,
     meter: 'static',
     timeSignature: [4, 4],
@@ -51,11 +73,17 @@ export function App() {
   });
 
   const fullParams: GenParams = { ...params, seed };
-  const matrix = useMemo(() => buildMatrix(series, params.matrixMode), [series, params.matrixMode]);
-  const score = useMemo(() => assemble(matrix, palette, fullParams), [matrix, palette, fullParams]);
 
-  const scoreRef = useRef(score);
-  scoreRef.current = score;
+  // The active composition is committed explicitly via Generate — it does not
+  // recompute live as you edit, so playback and notation stay stable until asked.
+  const [comp, setComp] = useState(() => generate(series, palette, fullParams));
+  const signature = JSON.stringify({ series, palette, fullParams });
+  const dirty = signature !== comp.sig;
+
+  const doGenerate = () => setComp(generate(series, palette, fullParams));
+
+  const scoreRef = useRef(comp.score);
+  scoreRef.current = comp.score;
   const playerRef = useRef(createPlayer(() => scoreRef.current));
   const [playing, setPlaying] = useState(false);
 
@@ -91,8 +119,7 @@ export function App() {
   };
 
   const downloadXml = () => {
-    const xml = toMusicXML(score);
-    const blob = new Blob([xml], { type: 'application/vnd.recordare.musicxml+xml' });
+    const blob = new Blob([comp.xml], { type: 'application/vnd.recordare.musicxml+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -108,6 +135,29 @@ export function App() {
       return { ...s, pitches };
     });
 
+  const setMultiplier = (i: number, v: number) =>
+    setPalette((p) => {
+      const multipliers = p.multipliers.slice();
+      multipliers[i] = Math.max(1, Math.min(99, Math.round(v) || 1));
+      return { ...p, multipliers };
+    });
+
+  const toggleSilent = (i: number) =>
+    setPalette((p) => {
+      const silent = p.silent.slice();
+      silent[i] = !silent[i];
+      return { ...p, silent };
+    });
+
+  const setTransform = (v: VoiceId, patch: Partial<{ reverse: boolean; rotate: number }>) =>
+    setParams((p) => ({
+      ...p,
+      durationTransforms: {
+        ...p.durationTransforms,
+        [v]: { ...p.durationTransforms[v], ...patch },
+      },
+    }));
+
   const up = <K extends keyof Omit<GenParams, 'seed'>>(k: K, v: Omit<GenParams, 'seed'>[K]) =>
     setParams((p) => ({ ...p, [k]: v }));
 
@@ -116,9 +166,10 @@ export function App() {
       <header>
         <h1>Post-Tonal Serial Workstation</h1>
         <div className="transport">
-          <button className="primary" onClick={togglePlay}>
-            {playing ? '■ Stop' : '▶ Play'}
+          <button className={`primary ${dirty ? 'dirty' : ''}`} onClick={doGenerate}>
+            ⟳ Generate{dirty ? ' •' : ''}
           </button>
+          <button onClick={togglePlay}>{playing ? '■ Stop' : '▶ Play'}</button>
           <button onClick={downloadXml}>⭳ MusicXML</button>
         </div>
       </header>
@@ -174,7 +225,7 @@ export function App() {
 
         <section className="panel">
           <h2>Matrix</h2>
-          <MatrixGrid matrix={matrix} />
+          <MatrixGrid matrix={comp.matrix} />
           <p className="hint">
             {params.matrixMode === 'schoenberg'
               ? 'Rows = P, reversed = R; columns = I, reversed = RI.'
@@ -191,13 +242,52 @@ export function App() {
             </select>
             <button onClick={randomizePalette}>🎲 durations</button>
           </div>
+          <label className="fieldlabel">Duration series (× t₀ · click cell to toggle rest)</label>
+          <div className="durgrid">
+            {palette.multipliers.map((mult, i) => (
+              <div key={i} className={`durcell ${palette.silent[i] ? 'rest' : ''}`}>
+                <input
+                  type="number" min={1} max={99} value={mult}
+                  onChange={(e) => setMultiplier(i, Number(e.target.value))}
+                />
+                <button className="silentbtn" title="toggle rest" onClick={() => toggleSilent(i)}>
+                  {palette.silent[i] ? '𝄽' : '♪'}
+                </button>
+              </div>
+            ))}
+          </div>
           <div className="row">
             <label>Duration mode</label>
             <select value={params.durationMode} onChange={(e) => up('durationMode', e.target.value as GenParams['durationMode'])}>
-              <option value="integral">Integral (Boulez)</option>
-              <option value="independent">Independent</option>
+              <option value="integral">Integral (Boulez — follows pitch)</option>
+              <option value="independent">Independent (per-voice)</option>
             </select>
           </div>
+          {params.durationMode === 'independent' && (
+            <div className="transforms">
+              <label className="fieldlabel">Per-voice rhythm — direction &amp; rotation</label>
+              {VOICES.map((v) => {
+                const tf = params.durationTransforms[v];
+                return (
+                  <div key={v} className="row">
+                    <label>{v}</label>
+                    <select
+                      value={tf.reverse ? 'reverse' : 'forward'}
+                      onChange={(e) => setTransform(v, { reverse: e.target.value === 'reverse' })}
+                    >
+                      <option value="forward">forward</option>
+                      <option value="reverse">reverse</option>
+                    </select>
+                    <label>rotate</label>
+                    <input
+                      type="number" min={0} max={series.length - 1} value={tf.rotate}
+                      onChange={(e) => setTransform(v, { rotate: Math.max(0, Number(e.target.value) || 0) })}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <Slider label="Determinism" value={params.determinism} onChange={(v) => up('determinism', v)} />
           <Slider label="Dispersion (jumpiness)" value={params.dispersion} onChange={(v) => up('dispersion', v)} />
           <Slider label="Rest probability" value={params.restProbability} onChange={(v) => up('restProbability', v)} />
@@ -268,6 +358,15 @@ export function App() {
           )}
         </section>
       </div>
+
+      <section className="panel scorepanel">
+        <h2>Score</h2>
+        <SheetMusic xml={comp.xml} />
+        <p className="hint">
+          Engraved from the same MusicXML the ⭳ button exports (rendered in-browser via
+          OpenSheetMusicDisplay). Quarter-tones use microtonal accidentals.
+        </p>
+      </section>
     </div>
   );
 }

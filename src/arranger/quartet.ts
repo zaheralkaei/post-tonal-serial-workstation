@@ -12,7 +12,7 @@ import type {
 } from '../types';
 import { VOICES } from '../types';
 import { makeRng } from '../core/rng';
-import { paletteCells, integralFor, rotationalArray, rotate, type DurCell } from '../core/duration';
+import { paletteCells, integralFor, transformDurations, rotate, type DurCell } from '../core/duration';
 import { pitchStream } from './extract';
 import { applyStochasticRests } from './rests';
 import { INSTRUMENT_RANGES, placeOctave, smoothLeap } from './register';
@@ -57,13 +57,23 @@ function planMeasures(palette: DurationPalette, params: GenParams): MeasurePlan[
   return plans;
 }
 
-function durationSequenceFor(palette: DurationPalette, params: GenParams, path: Path): DurCell[] {
-  const base = paletteCells(palette);
+/**
+ * Duration sequence for one voice at one moment.
+ * - Integral: follows the voice's current pitch path direction (Boulez coupling).
+ * - Independent: the voice's own transform (reverse / rotate), so parts can run
+ *   the rhythm out of sync — e.g. Cello reversed against Violin I forward.
+ */
+function durationSequenceFor(
+  base: DurCell[],
+  params: GenParams,
+  path: Path,
+  voice: VoiceId,
+): DurCell[] {
   if (params.durationMode === 'integral') {
     return integralFor(base, path);
   }
-  // Independent: flatten the rotational array so successive vectors differ.
-  return rotationalArray(base).flat();
+  const tf = params.durationTransforms[voice];
+  return transformDurations(base, tf.reverse, tf.rotate);
 }
 
 function measureIndexAt(plans: MeasurePlan[], t: number): number {
@@ -94,25 +104,20 @@ export function assemble(matrix: Matrix, palette: DurationPalette, params: GenPa
   // Random allocation: shuffle the canonical paths across voices per measure.
   const perMeasurePaths: Path[][] = plans.map(() => rng.shuffle(CANONICAL_PATHS));
 
-  // Precompute a long pitch stream and a duration sequence per canonical path.
+  // Pitch reads the matrix by path; precompute one long stream per canonical path.
+  const base = paletteCells(palette);
   const upperBound = totalUnits + 8; // at most one note per unit
   const pitchByPath = new Map<Path, number[]>();
-  const durByPath = new Map<Path, DurCell[]>();
   const allPaths = new Set<Path>(CANONICAL_PATHS);
   if (params.voiceAllocation.mode === 'manual') {
     for (const v of VOICES) allPaths.add(params.voiceAllocation.map[v]);
   }
   for (const p of allPaths) {
     pitchByPath.set(p, pitchStream(matrix, p, params.determinism, makeRng(params.seed ^ hashPath(p)), upperBound));
-    durByPath.set(p, durationSequenceFor(palette, params, p));
   }
 
   const pitchIdx = new Map<Path, number>();
-  const durIdx = new Map<Path, number>();
-  for (const p of allPaths) {
-    pitchIdx.set(p, 0);
-    durIdx.set(p, 0);
-  }
+  for (const p of allPaths) pitchIdx.set(p, 0);
 
   const voices: Record<VoiceId, NoteEvent[]> = {
     violinI: [],
@@ -125,19 +130,19 @@ export function assemble(matrix: Matrix, palette: DurationPalette, params: GenPa
     const range = INSTRUMENT_RANGES[voice];
     let t = 0;
     let prev: number | null = null;
+    let durIdx = 0; // duration cursor is per-voice
     while (t < totalUnits) {
       const m = measureIndexAt(plans, t);
       const path = pathForVoice(voice, m, params, perMeasurePaths);
       const pList = pitchByPath.get(path)!;
-      const dSeq = durByPath.get(path)!;
 
       const pi = pitchIdx.get(path)!;
       const pc = pList[pi % pList.length];
       pitchIdx.set(path, pi + 1);
 
-      const di = durIdx.get(path)!;
-      const dcell = dSeq[di % dSeq.length];
-      durIdx.set(path, di + 1);
+      const dSeq = durationSequenceFor(base, params, path, voice);
+      const dcell = dSeq[durIdx % dSeq.length];
+      durIdx += 1;
 
       let dur = Math.max(1, dcell.mult);
       if (t + dur > totalUnits) dur = totalUnits - t; // clip final event

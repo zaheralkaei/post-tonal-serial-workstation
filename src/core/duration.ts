@@ -33,6 +33,12 @@ export function rotationalArray(cells: DurCell[]): DurCell[][] {
   return cells.map((_, k) => rotate(cells, k));
 }
 
+/** Per-voice transform (independent mode): optional reverse, then cyclic rotate. */
+export function transformDurations(cells: DurCell[], reverse: boolean, rot: number): DurCell[] {
+  const s = reverse ? cells.slice().reverse() : cells.slice();
+  return rotate(s, rot);
+}
+
 /**
  * Integral (Boulez) coupling: the palette follows the read direction of the
  * pitch path. Forward reads (P, I, diagDown) use the palette as-is; reverse

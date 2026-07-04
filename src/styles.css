@@ -56,6 +56,7 @@ button {
 }
 button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent); color: #0d1017; border-color: var(--accent); font-weight: 600; }
+button.primary.dirty { background: var(--quarter); border-color: var(--quarter); }
 
 .pitchgrid { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 .pitchcell {
@@ -67,6 +68,21 @@ button.primary { background: var(--accent); color: #0d1017; border-color: var(--
 .pitchcell.quarter { border-color: var(--quarter); }
 .pitchcell.quarter span { color: var(--quarter); }
 
+.fieldlabel { display: block; color: var(--muted); font-size: 12px; margin: 10px 0 6px; }
+
+.durgrid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.durcell {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px;
+}
+.durcell input { width: 42px; text-align: center; }
+.durcell.rest { border-color: var(--muted); opacity: 0.6; }
+.silentbtn { padding: 1px 6px; font-size: 13px; line-height: 1.2; }
+.durcell.rest .silentbtn { color: var(--muted); }
+.transforms { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 6px; }
+.transforms .row label:first-child { text-transform: capitalize; }
+.transforms input[type="number"] { width: 48px; }
+
 .matrix { display: grid; gap: 2px; }
 .mcell {
   background: var(--panel2); border-radius: 3px; text-align: center;
@@ -77,3 +93,16 @@ button.primary { background: var(--accent); color: #0d1017; border-color: var(--
 
 .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
 .voicemap .row label { text-transform: capitalize; }
+
+.scorepanel { margin-top: 16px; }
+.sheetwrap { position: relative; }
+.sheet {
+  background: #fff; border-radius: 8px; padding: 10px 6px;
+  overflow-x: auto; min-height: 220px;
+}
+.sheetbadge {
+  position: absolute; top: 8px; right: 10px; z-index: 2;
+  background: var(--accent); color: #0d1017; font-size: 11px; font-weight: 600;
+  padding: 3px 8px; border-radius: 10px;
+}
+.sheetbadge.err { background: #e0574f; color: #fff; }

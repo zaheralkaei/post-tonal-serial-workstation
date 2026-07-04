@@ -27,6 +27,12 @@ function params(over: Partial<GenParams> = {}): GenParams {
       mode: 'manual',
       map: { violinI: 'P', violinII: 'I', viola: 'R', cello: 'RI' },
     },
+    durationTransforms: {
+      violinI: { reverse: false, rotate: 0 },
+      violinII: { reverse: false, rotate: 0 },
+      viola: { reverse: false, rotate: 0 },
+      cello: { reverse: true, rotate: 0 },
+    },
     tempoBpm: 120,
     meter: 'static',
     timeSignature: [4, 4],
@@ -87,5 +93,37 @@ describe('quartet assembler', () => {
     expect(xml).toContain('<score-partwise');
     expect(xml).toContain('<part id="P1">');
     expect(xml.split('<measure').length - 1).toBe(4 * 4); // 4 measures × 4 parts
+  });
+
+  it('independent mode: a reversed voice gets different durations than a forward one', () => {
+    const m = buildMatrix(series, 'schoenberg');
+    const score = assemble(
+      m,
+      palette,
+      params({
+        durationMode: 'independent',
+        // Violin I forward, Cello reversed — same allocation so pitch paths differ only.
+        durationTransforms: {
+          violinI: { reverse: false, rotate: 0 },
+          violinII: { reverse: false, rotate: 0 },
+          viola: { reverse: false, rotate: 0 },
+          cello: { reverse: true, rotate: 0 },
+        },
+      }),
+    );
+    const vDur = score.voices.violinI.slice(0, 7).map((e) => e.durUnits);
+    const cDur = score.voices.cello.slice(0, 7).map((e) => e.durUnits);
+    // palette 1..7 forward vs reversed 7..1 -> sequences must differ.
+    expect(vDur).not.toEqual(cDur);
+    expect(cDur[0]).toBe(7);
+  });
+
+  it('emits quarter-tone accidentals for microtonal pitches', () => {
+    // series includes pitch class 3 (a quarter-tone), so the score must too.
+    const m = buildMatrix(series, 'schoenberg');
+    const score = assemble(m, palette, params({ dispersion: 0 }));
+    const xml = toMusicXML(score);
+    expect(xml).toContain('<alter>0.5</alter>');
+    expect(xml).toContain('<accidental>quarter-sharp</accidental>');
   });
 });

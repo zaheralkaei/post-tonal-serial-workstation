@@ -39,6 +39,16 @@ export interface DurationPalette {
 
 export type DurationMode = 'integral' | 'independent';
 
+/**
+ * Per-voice duration transform (independent mode). Lets each instrument run the
+ * duration series forward or reversed, with an optional cyclic rotation, so the
+ * parts need not share the rhythm in sync (§3.2).
+ */
+export interface DurTransform {
+  reverse: boolean;
+  rotate: number; // cyclic offset into the palette
+}
+
 export const VOICES = ['violinI', 'violinII', 'viola', 'cello'] as const;
 export type VoiceId = (typeof VOICES)[number];
 
@@ -60,6 +70,7 @@ export interface GenParams {
   dispersion: number; // D_reg 0..1 (§4.3)
   voiceLeading: boolean;
   voiceAllocation: VoiceAllocation;
+  durationTransforms: Record<VoiceId, DurTransform>; // per-voice, used in independent mode
   tempoBpm: number; // 40..240
   meter: 'static' | 'variable';
   timeSignature?: [number, number];
