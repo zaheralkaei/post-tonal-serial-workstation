@@ -56,9 +56,18 @@ header h1 { font-size: 18px; margin: 0; letter-spacing: 0.2px; }
 }
 
 .columns {
-  display: grid; grid-template-columns: 1fr 1.1fr 1fr; gap: 16px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;
 }
-@media (max-width: 1050px) { .columns { grid-template-columns: 1fr; } }
+.col-left, .col-right { display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
+
+.actionbar {
+  display: flex; gap: 10px; align-items: center;
+  margin: 18px 0; padding: 14px 16px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+.actionbar button { padding: 8px 16px; }
+.actionbar button.primary { font-size: 14px; }
 
 .panel {
   background: var(--panel); border: 1px solid var(--line);

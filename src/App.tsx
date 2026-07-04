@@ -204,18 +204,12 @@ export function App() {
           <h1>Post-Tonal Serial Workstation</h1>
           <button className="infobtn" title="About this app" onClick={() => setShowAbout(true)}>ⓘ</button>
         </div>
-        <div className="transport">
-          <button className={`primary ${dirty ? 'dirty' : ''}`} onClick={doGenerate}>
-            ⟳ Generate{dirty ? ' •' : ''}
-          </button>
-          <button onClick={togglePlay}>{playing ? '■ Stop' : '▶ Play'}</button>
-          <button onClick={downloadXml}>⭳ MusicXML</button>
-        </div>
       </header>
 
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
 
       <div className="columns">
+        <div className="col-left">
         <section className="panel">
           <h2>Series</h2>
           <div className="row">
@@ -276,7 +270,9 @@ export function App() {
             {dirty && ' · Press Generate to update the score & audio.'}
           </p>
         </section>
+        </div>
 
+        <div className="col-right">
         <section className="panel">
           <h2>Rhythm & Generation</h2>
           <div className="row">
@@ -427,6 +423,15 @@ export function App() {
             </div>
           )}
         </section>
+        </div>
+      </div>
+
+      <div className="actionbar">
+        <button className={`primary ${dirty ? 'dirty' : ''}`} onClick={doGenerate}>
+          ⟳ Generate{dirty ? ' •' : ''}
+        </button>
+        <button onClick={togglePlay}>{playing ? '■ Stop' : '▶ Play'}</button>
+        <button onClick={downloadXml}>⭳ MusicXML</button>
       </div>
 
       <section className="panel scorepanel">
