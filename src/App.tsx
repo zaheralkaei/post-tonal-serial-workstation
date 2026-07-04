@@ -98,6 +98,8 @@ export function App() {
   const auditionRef = useRef<ReturnType<typeof createAuditioner>>();
   if (!auditionRef.current) auditionRef.current = createAuditioner();
 
+  const [showAbout, setShowAbout] = useState(false);
+
   // Audition state: which vector is sounding, and which cell is lit right now.
   const [auditionId, setAuditionId] = useState<string | null>(null);
   const [activeCell, setActiveCell] = useState<{ y: number; x: number } | null>(null);
@@ -198,7 +200,10 @@ export function App() {
   return (
     <div className="app">
       <header>
-        <h1>Post-Tonal Serial Workstation</h1>
+        <div className="titlewrap">
+          <h1>Post-Tonal Serial Workstation</h1>
+          <button className="infobtn" title="About this app" onClick={() => setShowAbout(true)}>ⓘ</button>
+        </div>
         <div className="transport">
           <button className={`primary ${dirty ? 'dirty' : ''}`} onClick={doGenerate}>
             ⟳ Generate{dirty ? ' •' : ''}
@@ -207,6 +212,8 @@ export function App() {
           <button onClick={downloadXml}>⭳ MusicXML</button>
         </div>
       </header>
+
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
 
       <div className="columns">
         <section className="panel">
@@ -279,20 +286,37 @@ export function App() {
             </select>
             <button onClick={randomizePalette}>🎲 durations</button>
           </div>
-          <label className="fieldlabel">Duration series (× t₀ · click cell to toggle rest)</label>
+          <label className="fieldlabel">
+            Duration series — read left→right; each cell is note <em>k</em>'s length in {palette.unit} units.
+            Bar shows relative length; ♪ = note, click to make it a rest (𝄽).
+          </label>
           <div className="durgrid">
-            {palette.multipliers.map((mult, i) => (
-              <div key={i} className={`durcell ${palette.silent[i] ? 'rest' : ''}`}>
-                <input
-                  type="number" min={1} max={99} value={mult}
-                  onChange={(e) => setMultiplier(i, Number(e.target.value))}
-                />
-                <button className="silentbtn" title="toggle rest" onClick={() => toggleSilent(i)}>
-                  {palette.silent[i] ? '𝄽' : '♪'}
-                </button>
-              </div>
-            ))}
+            {palette.multipliers.map((mult, i) => {
+              const maxMult = Math.max(...palette.multipliers, 1);
+              return (
+                <div key={i} className={`durcell ${palette.silent[i] ? 'rest' : ''}`}>
+                  <span className="duridx">{i + 1}</span>
+                  <input
+                    type="number" min={1} max={99} value={mult}
+                    onChange={(e) => setMultiplier(i, Number(e.target.value))}
+                  />
+                  <div className="durbar" title={`${mult} × ${palette.unit}`}>
+                    <div className="durbarfill" style={{ height: `${(mult / maxMult) * 100}%` }} />
+                  </div>
+                  <button className="silentbtn" title="toggle rest" onClick={() => toggleSilent(i)}>
+                    {palette.silent[i] ? '𝄽' : '♪'}
+                  </button>
+                </div>
+              );
+            })}
           </div>
+          <p className="durseq">
+            series:{' '}
+            {palette.multipliers
+              .map((m, i) => (palette.silent[i] ? `(${m})` : `${m}`))
+              .join(' – ')}
+            {'  '}<span className="durseqnote">( ) = rest</span>
+          </p>
           <div className="row">
             <label>Duration mode</label>
             <select value={params.durationMode} onChange={(e) => up('durationMode', e.target.value as GenParams['durationMode'])}>
@@ -404,6 +428,35 @@ export function App() {
           OpenSheetMusicDisplay). Quarter-tones use microtonal accidentals.
         </p>
       </section>
+    </div>
+  );
+}
+
+function AboutModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} title="Close">✕</button>
+        <h2>About</h2>
+        <p>
+          The <strong>Post-Tonal Serial Workstation</strong> is an environment for analysing,
+          generating, and algorithmically composing serial music. It unifies four avant-garde
+          traditions that were historically kept apart:
+        </p>
+        <ul>
+          <li><strong>Schoenberg</strong> — classical twelve-tone matrices (Prime, Inversion, Retrograde, Retrograde-Inversion), generalised to any series length.</li>
+          <li><strong>Stravinsky</strong> — rotational arrays, where each rotation is transposed back to the starting pitch and harmony is drawn from the verticals.</li>
+          <li><strong>Boulez</strong> — integral (total) serialism: rhythm serialised as a duration palette whose deployment order is permuted alongside the pitches.</li>
+          <li><strong>Wyschnegradsky</strong> — full 24-tone quarter-tone microtonality (24-EDO).</li>
+        </ul>
+        <p>
+          A series is any number of pitches (5–12 or 24) drawn from the 24-EDO space; the engine
+          builds a matrix, couples it to a duration series, and arranges the result for a string
+          quartet — which you can <strong>audition per row/column/diagonal</strong>, play back with
+          a bowed-string synth, engrave as notation, and export as MusicXML.
+        </p>
+        <p className="credit">Conceptualized and implemented by <strong>Zaher Alkaei</strong>.</p>
+      </div>
     </div>
   );
 }
