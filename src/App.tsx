@@ -284,7 +284,12 @@ export function App() {
             <select value={palette.unit} onChange={(e) => setPalette((p) => ({ ...p, unit: e.target.value as NoteValue }))}>
               {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
-            <button onClick={randomizePalette}>🎲 durations</button>
+            <button
+              onClick={randomizePalette}
+              title="Replace every duration value with a random length from 1 to N × t₀ (rests and unit unchanged)"
+            >
+              🎲 Randomize durations
+            </button>
           </div>
           <label className="fieldlabel">
             Duration series — read left→right; each cell is note <em>k</em>'s length in {palette.unit} units.
@@ -363,16 +368,20 @@ export function App() {
             </label>
           </div>
           <div className="row">
-            <label>Meter</label>
-            <select value={params.meter} onChange={(e) => up('meter', e.target.value as GenParams['meter'])}>
-              <option value="static">Static 4/4</option>
-              <option value="variable">Variable (from durations)</option>
-            </select>
-            <label>Measures</label>
-            <input
-              type="number" min={1} max={64} value={params.measureCount}
-              onChange={(e) => up('measureCount', Number(e.target.value))}
-            />
+            <span className="field">
+              <label>Meter</label>
+              <select value={params.meter} onChange={(e) => up('meter', e.target.value as GenParams['meter'])}>
+                <option value="static">Static 4/4</option>
+                <option value="variable">Variable (from durations)</option>
+              </select>
+            </span>
+            <span className="field">
+              <label>Measures</label>
+              <input
+                type="number" min={1} max={64} value={params.measureCount}
+                onChange={(e) => up('measureCount', Number(e.target.value))}
+              />
+            </span>
           </div>
           <div className="row">
             <label>Tempo {params.tempoBpm}</label>
@@ -455,7 +464,13 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           quartet — which you can <strong>audition per row/column/diagonal</strong>, play back with
           a bowed-string synth, engrave as notation, and export as MusicXML.
         </p>
-        <p className="credit">Conceptualized and implemented by <strong>Zaher Alkaei</strong>.</p>
+        <p className="credit">
+          Conceptualized and implemented by{' '}
+          <a href="https://github.com/zaheralkaei" target="_blank" rel="noopener noreferrer">
+            <strong>Zaher Alkaei</strong>
+          </a>
+          .
+        </p>
       </div>
     </div>
   );

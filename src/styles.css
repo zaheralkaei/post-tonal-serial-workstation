@@ -48,6 +48,8 @@ header h1 { font-size: 18px; margin: 0; letter-spacing: 0.2px; }
 .modal li { margin: 6px 0; }
 .modal .credit { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); }
 .modal .credit strong { color: var(--ink); }
+.modal .credit a { color: var(--accent); text-decoration: none; }
+.modal .credit a:hover { text-decoration: underline; }
 .modal-close {
   position: absolute; top: 12px; right: 12px; width: 28px; height: 28px;
   border-radius: 6px; padding: 0;
@@ -67,6 +69,9 @@ header h1 { font-size: 18px; margin: 0; letter-spacing: 0.2px; }
 
 .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
 .row label { color: var(--muted); min-width: 90px; }
+/* Keep a label glued to its own control so they never wrap apart. */
+.field { display: inline-flex; align-items: center; gap: 6px; }
+.field label { min-width: auto; }
 .row .chk { min-width: auto; display: flex; align-items: center; gap: 4px; color: var(--ink); }
 
 input[type="number"], select {
