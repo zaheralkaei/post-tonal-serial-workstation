@@ -318,7 +318,10 @@ export function App() {
               .join(' – ')}
             {'  '}<span className="durseqnote">( ) = rest</span>
           </p>
-          <div className="row">
+          <div
+            className="row"
+            title="Each note takes the next value in the duration series (cycling). Integral: the series direction follows each voice's pitch path (forward for P/I, reversed for R/RI). Independent: each voice runs its own copy per its direction/rotation below."
+          >
             <label>Duration mode</label>
             <select value={params.durationMode} onChange={(e) => up('durationMode', e.target.value as GenParams['durationMode'])}>
               <option value="integral">Integral (Boulez — follows pitch)</option>
@@ -350,15 +353,32 @@ export function App() {
               })}
             </div>
           )}
-          <Slider label="Determinism" value={params.determinism} onChange={(v) => up('determinism', v)} />
-          <Slider label="Dispersion (jumpiness)" value={params.dispersion} onChange={(v) => up('dispersion', v)} />
-          <Slider label="Rest probability" value={params.restProbability} onChange={(v) => up('restProbability', v)} />
+          <Slider
+            label="Determinism" value={params.determinism} onChange={(v) => up('determinism', v)}
+            title="100% reads the matrix paths in order; 0% is a random walk over neighbouring cells; values in between mix systematic reads with occasional one-step deviations."
+          />
+          <Slider
+            label="Dispersion (jumpiness)" value={params.dispersion} onChange={(v) => up('dispersion', v)}
+            title="How octaves are chosen. 0% = pick the octave that minimizes the leap from the previous note (smooth); 100% = map the pitch class linearly across the instrument's range (wide, jumpy)."
+          />
+          <Slider
+            label="Rest probability" value={params.restProbability} onChange={(v) => up('restProbability', v)}
+            title="Chance each note is turned into a rest to thin the texture. Respects the Min-voices floor; does not affect structural (𝄽) rests."
+          />
           <div className="row">
-            <label>Min voices</label>
-            <select value={params.minVoices} onChange={(e) => up('minVoices', Number(e.target.value) as GenParams['minVoices'])}>
-              {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-            <label className="chk">
+            <span
+              className="field"
+              title="Minimum instruments allowed to sound at once. The Rest-probability thinning won't rest a note if it would drop below this floor. 1 = never fully silent; 0 = allow total silence. Structural (𝄽) rests are always kept."
+            >
+              <label>Min voices</label>
+              <select value={params.minVoices} onChange={(e) => up('minVoices', Number(e.target.value) as GenParams['minVoices'])}>
+                {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </span>
+            <label
+              className="chk"
+              title="When a leap from the previous note exceeds an octave, transpose the note by octaves to keep it within an octave (staying in the instrument's range). Automatically relaxed when Dispersion ≥ 50%."
+            >
               <input type="checkbox" checked={params.voiceLeading} onChange={(e) => up('voiceLeading', e.target.checked)} />
               voice-leading
             </label>
@@ -387,16 +407,20 @@ export function App() {
             />
           </div>
 
-          <h3>Voice allocation</h3>
+          <h3
+            title="How each instrument gets its notes. A path starts at index 0 (P = row 0, I = column 0) and advances to the next row/column as the voice needs more notes, wrapping around. Determinism < 100% injects random-walk deviations."
+          >
+            Voice allocation
+          </h3>
           <div className="row">
-            <label className="chk">
+            <label className="chk" title="Wire each instrument to a fixed matrix path (below).">
               <input
                 type="radio" checked={params.voiceAllocation.mode === 'manual'}
                 onChange={() => up('voiceAllocation', { mode: 'manual', map: { violinI: 'P', violinII: 'I', viola: 'R', cello: 'RI' } })}
               />
               manual
             </label>
-            <label className="chk">
+            <label className="chk" title="Reshuffle which path each instrument reads at the start of every measure (seeded).">
               <input
                 type="radio" checked={params.voiceAllocation.mode === 'random'}
                 onChange={() => up('voiceAllocation', { mode: 'random' })}
@@ -407,7 +431,11 @@ export function App() {
           {params.voiceAllocation.mode === 'manual' && (
             <div className="voicemap">
               {VOICES.map((v) => (
-                <div key={v} className="row">
+                <div
+                  key={v}
+                  className="row"
+                  title={`${v} reads this vector: P/R = a row forward/back, I/RI = a column down/up, or a diagonal. It begins at index 0 and steps to the next row/column as needed.`}
+                >
                   <label>{v}</label>
                   <select
                     value={(params.voiceAllocation as { mode: 'manual'; map: Record<VoiceId, Path> }).map[v]}
@@ -481,9 +509,19 @@ function AboutModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Slider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function Slider({
+  label,
+  value,
+  onChange,
+  title,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  title?: string;
+}) {
   return (
-    <div className="row">
+    <div className="row" title={title}>
       <label>{label} {(value * 100).toFixed(0)}%</label>
       <input type="range" min={0} max={1} step={0.01} value={value} onChange={(e) => onChange(Number(e.target.value))} />
     </div>

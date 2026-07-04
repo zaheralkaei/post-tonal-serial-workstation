@@ -81,6 +81,9 @@ header h1 { font-size: 18px; margin: 0; letter-spacing: 0.2px; }
 /* Keep a label glued to its own control so they never wrap apart. */
 .field { display: inline-flex; align-items: center; gap: 6px; }
 .field label { min-width: auto; }
+/* Signal that these controls have hover explanations. */
+.row[title], .field[title], h3[title], .chk[title] { cursor: help; }
+.row[title] input, .row[title] select, .chk[title] input { cursor: pointer; }
 .row .chk { min-width: auto; display: flex; align-items: center; gap: 4px; color: var(--ink); }
 
 input[type="number"], select {
