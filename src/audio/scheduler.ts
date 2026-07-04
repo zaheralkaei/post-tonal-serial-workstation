@@ -32,7 +32,10 @@ interface FlatEvent {
   velocity: number;
 }
 
-export function createPlayer(getScore: () => ScoreModel): Player {
+export function createPlayer(
+  getScore: () => ScoreModel,
+  onPlayingChange?: (playing: boolean) => void,
+): Player {
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
   let timer: number | null = null;
@@ -40,6 +43,7 @@ export function createPlayer(getScore: () => ScoreModel): Player {
   let cursor = 0;
   let startClock = 0;
   let playing = false;
+  let endTimer: number | null = null;
 
   const LOOKAHEAD_MS = 25;
   const SCHEDULE_AHEAD = 0.1; // seconds
@@ -90,7 +94,13 @@ export function createPlayer(getScore: () => ScoreModel): Player {
     cursor = 0;
     startClock = ctx.currentTime + 0.1;
     playing = true;
+    onPlayingChange?.(true);
     timer = window.setInterval(tick, LOOKAHEAD_MS);
+
+    // Wall-clock backstop: guarantees the player stops (and the UI resets) at the
+    // end of the piece even if the AudioContext clock stalls.
+    const lastEnd = events.reduce((m, e) => Math.max(m, e.startSec + e.durSec), 0);
+    endTimer = window.setTimeout(stop, (0.1 + lastEnd + 0.7) * 1000);
   };
 
   const stop = (): void => {
@@ -98,12 +108,19 @@ export function createPlayer(getScore: () => ScoreModel): Player {
       window.clearInterval(timer);
       timer = null;
     }
+    if (endTimer !== null) {
+      window.clearTimeout(endTimer);
+      endTimer = null;
+    }
     if (ctx) {
       ctx.close();
       ctx = null;
       master = null;
     }
-    playing = false;
+    if (playing) {
+      playing = false;
+      onPlayingChange?.(false); // fires on manual stop AND natural end
+    }
   };
 
   return {

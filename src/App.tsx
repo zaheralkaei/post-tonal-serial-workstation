@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import type {
   DurationPalette,
   GenParams,
@@ -13,6 +13,7 @@ import { buildMatrix } from './core/matrix';
 import { assemble } from './arranger/quartet';
 import { toMusicXML } from './export/musicxml';
 import { createPlayer } from './audio/scheduler';
+import { createAuditioner } from './audio/audition';
 import { makeRng } from './core/rng';
 import { pcName, isQuarter } from './ui/format';
 import { SheetMusic } from './ui/SheetMusic';
@@ -82,10 +83,45 @@ export function App() {
 
   const doGenerate = () => setComp(generate(series, palette, fullParams));
 
+  // The matrix is a direct view of the series, so it updates live as you edit;
+  // only the rendered composition (score / sheet / audio) waits for Generate.
+  const liveMatrix = useMemo(
+    () => buildMatrix(series, params.matrixMode),
+    [series, params.matrixMode],
+  );
+
   const scoreRef = useRef(comp.score);
   scoreRef.current = comp.score;
-  const playerRef = useRef(createPlayer(() => scoreRef.current));
   const [playing, setPlaying] = useState(false);
+  const playerRef = useRef<ReturnType<typeof createPlayer>>();
+  if (!playerRef.current) playerRef.current = createPlayer(() => scoreRef.current, setPlaying);
+  const auditionRef = useRef<ReturnType<typeof createAuditioner>>();
+  if (!auditionRef.current) auditionRef.current = createAuditioner();
+
+  // Audition state: which vector is sounding, and which cell is lit right now.
+  const [auditionId, setAuditionId] = useState<string | null>(null);
+  const [activeCell, setActiveCell] = useState<{ y: number; x: number } | null>(null);
+
+  const audition = (id: string, pcs: number[], coords: (i: number) => [number, number]) => {
+    if (auditionId === id) {
+      auditionRef.current!.stop();
+      setAuditionId(null);
+      setActiveCell(null);
+      return;
+    }
+    setAuditionId(id);
+    auditionRef.current!.play(
+      pcs,
+      (i) => {
+        const [y, x] = coords(i);
+        setActiveCell({ y, x });
+      },
+      () => {
+        setAuditionId(null);
+        setActiveCell(null);
+      },
+    );
+  };
 
   const setLength = (n: number) => {
     setSeries((s) => ({ length: n, pitches: resize(s.pitches, n, 0) }));
@@ -109,13 +145,11 @@ export function App() {
   };
 
   const togglePlay = async () => {
-    if (playerRef.current.isPlaying) {
-      playerRef.current.stop();
-      setPlaying(false);
-    } else {
-      await playerRef.current.play();
-      setPlaying(true);
-    }
+    const player = playerRef.current!;
+    // React `playing` mirrors the player via the onPlayingChange callback, so it
+    // stays correct on manual stop AND when the piece ends on its own.
+    if (player.isPlaying) player.stop();
+    else await player.play();
   };
 
   const downloadXml = () => {
@@ -225,11 +259,14 @@ export function App() {
 
         <section className="panel">
           <h2>Matrix</h2>
-          <MatrixGrid matrix={comp.matrix} />
+          <MatrixGrid matrix={liveMatrix} active={activeCell} playingId={auditionId} onAudition={audition} />
           <p className="hint">
+            Updates live as you edit the series. ▸ audition a row (P), ▾ a column (I), or a
+            diagonal — the sounding note lights up.
             {params.matrixMode === 'schoenberg'
-              ? 'Rows = P, reversed = R; columns = I, reversed = RI.'
-              : 'Rotational verticals — column reads are not inversions.'}
+              ? ' Rows are prime forms; columns are inversions.'
+              : ' Stravinsky mode: columns are rotational verticals, not inversions.'}
+            {dirty && ' · Press Generate to update the score & audio.'}
           </p>
         </section>
 
@@ -380,16 +417,69 @@ function Slider({ label, value, onChange }: { label: string; value: number; onCh
   );
 }
 
-function MatrixGrid({ matrix }: { matrix: ReturnType<typeof buildMatrix> }) {
+interface MatrixGridProps {
+  matrix: ReturnType<typeof buildMatrix>;
+  active: { y: number; x: number } | null;
+  playingId: string | null;
+  onAudition: (id: string, pcs: number[], coords: (i: number) => [number, number]) => void;
+}
+
+function MatrixGrid({ matrix, active, playingId, onAudition }: MatrixGridProps) {
+  const n = matrix.n;
+  const column = (x: number) => matrix.cells.map((r) => r[x]);
+  const diagDown = matrix.cells.map((r, i) => r[i]);
+  const diagUp = matrix.cells.map((r, i) => r[n - 1 - i]);
+
   return (
-    <div className="matrix" style={{ gridTemplateColumns: `repeat(${matrix.n}, 1fr)` }}>
-      {matrix.cells.flatMap((row, y) =>
-        row.map((pc, x) => (
-          <div key={`${y}-${x}`} className={`mcell ${isQuarter(pc) ? 'quarter' : ''} ${x === y ? 'diag' : ''}`}>
-            {pcName(pc)}
-          </div>
-        )),
-      )}
+    <div className="matrixblock">
+      <div className="matrixgrid" style={{ gridTemplateColumns: `1.3rem repeat(${n}, 1fr)` }}>
+        <div className="corner" />
+        {Array.from({ length: n }, (_, x) => (
+          <button
+            key={`col-${x}`}
+            className={`mbtn ${playingId === `col-${x}` ? 'on' : ''}`}
+            title={`Audition column ${x + 1} (I)`}
+            onClick={() => onAudition(`col-${x}`, column(x), (i) => [i, x])}
+          >
+            {playingId === `col-${x}` ? '■' : '▾'}
+          </button>
+        ))}
+        {matrix.cells.map((row, y) => (
+          <Fragment key={`row-${y}`}>
+            <button
+              className={`mbtn ${playingId === `row-${y}` ? 'on' : ''}`}
+              title={`Audition row ${y + 1} (P)`}
+              onClick={() => onAudition(`row-${y}`, row, (i) => [y, i])}
+            >
+              {playingId === `row-${y}` ? '■' : '▸'}
+            </button>
+            {row.map((pc, x) => (
+              <div
+                key={x}
+                className={`mcell ${isQuarter(pc) ? 'quarter' : ''} ${x === y ? 'diag' : ''} ${
+                  active && active.y === y && active.x === x ? 'active' : ''
+                }`}
+              >
+                {pcName(pc)}
+              </div>
+            ))}
+          </Fragment>
+        ))}
+      </div>
+      <div className="diagrow">
+        <button
+          className={`mbtn wide ${playingId === 'diagDown' ? 'on' : ''}`}
+          onClick={() => onAudition('diagDown', diagDown, (i) => [i, i])}
+        >
+          {playingId === 'diagDown' ? '■' : '↘'} diagonal
+        </button>
+        <button
+          className={`mbtn wide ${playingId === 'diagUp' ? 'on' : ''}`}
+          onClick={() => onAudition('diagUp', diagUp, (i) => [i, n - 1 - i])}
+        >
+          {playingId === 'diagUp' ? '■' : '↗'} diagonal
+        </button>
+      </div>
     </div>
   );
 }
