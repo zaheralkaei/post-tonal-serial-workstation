@@ -12,7 +12,7 @@ import type {
 } from '../types';
 import { VOICES } from '../types';
 import { makeRng } from '../core/rng';
-import { paletteCells, integralFor, transformDurations, rotate, type DurCell } from '../core/duration';
+import { paletteCells, orderNumbers, transformDurations, rotate, type DurCell } from '../core/duration';
 import { pitchStream } from './extract';
 import { applyStochasticRests } from './rests';
 import { INSTRUMENT_RANGES, placeOctave, smoothLeap } from './register';
@@ -57,25 +57,6 @@ function planMeasures(palette: DurationPalette, params: GenParams): MeasurePlan[
   return plans;
 }
 
-/**
- * Duration sequence for one voice at one moment.
- * - Integral: follows the voice's current pitch path direction (Boulez coupling).
- * - Independent: the voice's own transform (reverse / rotate), so parts can run
- *   the rhythm out of sync — e.g. Cello reversed against Violin I forward.
- */
-function durationSequenceFor(
-  base: DurCell[],
-  params: GenParams,
-  path: Path,
-  voice: VoiceId,
-): DurCell[] {
-  if (params.durationMode === 'integral') {
-    return integralFor(base, path);
-  }
-  const tf = params.durationTransforms[voice];
-  return transformDurations(base, tf.reverse, tf.rotate);
-}
-
 function measureIndexAt(plans: MeasurePlan[], t: number): number {
   for (let m = plans.length - 1; m >= 0; m--) {
     if (t >= plans[m].start) return m;
@@ -106,6 +87,15 @@ export function assemble(matrix: Matrix, palette: DurationPalette, params: GenPa
 
   // Pitch reads the matrix by path; precompute one long stream per canonical path.
   const base = paletteCells(palette);
+  // Integral mode: each pitch class selects its duration by order number.
+  const order = orderNumbers(matrix.prime);
+  // Independent mode: each voice walks its own transformed copy of the series.
+  const ownSeries = Object.fromEntries(
+    VOICES.map((v) => {
+      const tf = params.durationTransforms[v];
+      return [v, transformDurations(base, tf.reverse, tf.rotate)];
+    }),
+  ) as Record<VoiceId, DurCell[]>;
   const upperBound = totalUnits + 8; // at most one note per unit
   const pitchByPath = new Map<Path, number[]>();
   const allPaths = new Set<Path>(CANONICAL_PATHS);
@@ -130,7 +120,7 @@ export function assemble(matrix: Matrix, palette: DurationPalette, params: GenPa
     const range = INSTRUMENT_RANGES[voice];
     let t = 0;
     let prev: number | null = null;
-    let durIdx = 0; // duration cursor is per-voice
+    let durIdx = 0; // independent mode: per-voice position in its series
     while (t < totalUnits) {
       const m = measureIndexAt(plans, t);
       const path = pathForVoice(voice, m, params, perMeasurePaths);
@@ -140,9 +130,14 @@ export function assemble(matrix: Matrix, palette: DurationPalette, params: GenPa
       const pc = pList[pi % pList.length];
       pitchIdx.set(path, pi + 1);
 
-      const dSeq = durationSequenceFor(base, params, path, voice);
-      const dcell = dSeq[durIdx % dSeq.length];
-      durIdx += 1;
+      let dcell: DurCell;
+      if (params.durationMode === 'integral') {
+        dcell = base[order[pc]];
+      } else {
+        const own = ownSeries[voice];
+        dcell = own[durIdx % own.length];
+        durIdx += 1;
+      }
 
       let dur = Math.max(1, dcell.mult);
       if (t + dur > totalUnits) dur = totalUnits - t; // clip final event

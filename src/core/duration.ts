@@ -1,7 +1,8 @@
 // Duration engine (§3): palette + permutation. Durations are never "inverted"
 // as values; only their deployment ORDER is transformed (Boulez, Structures Ia).
 
-import type { DurationPalette, Path } from '../types';
+import { EDO, mod24 } from './pitch';
+import type { DurationPalette, PitchClass } from '../types';
 
 export interface DurCell {
   mult: number; // positive integer multiple of t0
@@ -40,11 +41,24 @@ export function transformDurations(cells: DurCell[], reverse: boolean, rot: numb
 }
 
 /**
- * Integral (Boulez) coupling: the palette follows the read direction of the
- * pitch path. Forward reads (P, I, diagDown) use the palette as-is; reverse
- * reads (R, RI, diagUp) use it reversed. Durations track pitch transform.
+ * Integral (Boulez) coupling, as in Structures Ia: every pitch class carries the
+ * order number of its position in the prime, and that number selects its
+ * duration. Indexed by pitch class 0..23. A repeated pitch takes its first
+ * position. Pitches absent from the prime (transposed forms of a short row
+ * leave its collection) take the number of the nearest prime pitch, earlier
+ * positions winning ties.
  */
-export function integralFor(cells: DurCell[], path: Path): DurCell[] {
-  const reversed = path === 'R' || path === 'RI' || path === 'diagUp';
-  return reversed ? reverse(cells) : cells.slice();
+export function orderNumbers(prime: PitchClass[]): number[] {
+  return Array.from({ length: EDO }, (_, pc) => {
+    let best = 0;
+    let bestDist = Infinity;
+    prime.forEach((p, i) => {
+      const dist = Math.min(mod24(p - pc), mod24(pc - p));
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    });
+    return best;
+  });
 }

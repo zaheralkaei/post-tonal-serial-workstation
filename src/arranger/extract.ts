@@ -3,21 +3,76 @@
 
 import type { Matrix, Path, PitchClass } from '../types';
 import type { Rng } from '../core/rng';
-import { extract } from '../core/traversal';
+import { pathCells, type Cell } from '../core/traversal';
 
-interface Cursor {
-  y: number;
-  x: number;
+// The eight neighbours of a cell; a deviation always moves.
+const NEIGHBOURS: Cell[] = [
+  [-1, -1], [-1, 0], [-1, 1],
+  [0, -1], [0, 1],
+  [1, -1], [1, 0], [1, 1],
+];
+
+const wrap = (v: number, n: number) => ((v % n) + n) % n;
+
+/** Distance between two cells on the wrapped (toroidal) grid, in king moves. */
+export function cellDistance(a: Cell, b: Cell, n: number): number {
+  const d = (p: number, q: number) => Math.min(Math.abs(p - q), n - Math.abs(p - q));
+  return Math.max(d(a[0], b[0]), d(a[1], b[1]));
 }
 
-const clamp = (v: number, n: number) => ((v % n) + n) % n;
-
 /**
- * Generate `count` pitch classes for a voice.
- * - Systematic component: read the voice's `path`, cycling the row/column index
- *   each time the vector is exhausted so successive passes differ.
- * - Deviation component (prob 1-d): a one-step walk to an adjacent cell.
+ * Generate the cells a voice visits. One cursor drives both components:
+ * - Systematic (prob d): the next cell on the path. The row/column index
+ *   advances each time a vector is exhausted, so successive passes differ.
+ * - Deviation (prob 1-d): a one-step move to a neighbour of the cell just
+ *   played. The systematic read then resumes at the nearest cell still ahead
+ *   on the current vector (after it, if the walk landed exactly on it).
+ * The first cell is always the start of the path.
  */
+export function cellStream(
+  matrix: Matrix,
+  path: Path,
+  determinism: number,
+  rng: Rng,
+  count: number,
+): Cell[] {
+  const { n } = matrix;
+  const out: Cell[] = [];
+  let pass = 0;
+  let queue = pathCells(n, path, pass);
+  let next = 0; // index in `queue` of the next systematic cell
+  let cur: Cell | null = null;
+
+  for (let i = 0; i < count; i++) {
+    let cell: Cell;
+    if (cur === null || rng.next() < determinism) {
+      if (next >= queue.length) {
+        pass += 1;
+        queue = pathCells(n, path, pass);
+        next = 0;
+      }
+      cell = queue[next++];
+    } else {
+      const [dy, dx] = NEIGHBOURS[rng.int(NEIGHBOURS.length)];
+      cell = [wrap(cur[0] + dy, n), wrap(cur[1] + dx, n)];
+      let bestJ = next;
+      let bestD = Infinity;
+      for (let j = next; j < queue.length; j++) {
+        const dist = cellDistance(cell, queue[j], n);
+        if (dist < bestD) {
+          bestD = dist;
+          bestJ = j;
+        }
+      }
+      next = bestD === 0 ? bestJ + 1 : bestJ;
+    }
+    out.push(cell);
+    cur = cell;
+  }
+  return out;
+}
+
+/** The pitch classes of `cellStream`. */
 export function pitchStream(
   matrix: Matrix,
   path: Path,
@@ -25,41 +80,5 @@ export function pitchStream(
   rng: Rng,
   count: number,
 ): PitchClass[] {
-  const { n, cells } = matrix;
-  const out: PitchClass[] = [];
-
-  // Precompute the systematic queue (cycled index passes).
-  let pass = 0;
-  let vec = extract(matrix, path, pass);
-  let vi = 0;
-  const cur: Cursor = { y: 0, x: 0 };
-
-  const advanceSystematic = (): PitchClass => {
-    if (vi >= vec.length) {
-      pass = clamp(pass + 1, n);
-      vec = extract(matrix, path, pass);
-      vi = 0;
-    }
-    const v = vec[vi++];
-    return v;
-  };
-
-  const step = [-1, 0, 1];
-  const deviate = (): PitchClass => {
-    // one-step walk to an adjacent (incl. diagonal) cell within the block
-    const dy = step[rng.int(3)];
-    const dx = step[rng.int(3)];
-    cur.y = clamp(cur.y + dy, n);
-    cur.x = clamp(cur.x + dx, n);
-    return cells[cur.y][cur.x];
-  };
-
-  for (let i = 0; i < count; i++) {
-    if (rng.next() < determinism) {
-      out.push(advanceSystematic());
-    } else {
-      out.push(deviate());
-    }
-  }
-  return out;
+  return cellStream(matrix, path, determinism, rng, count).map(([y, x]) => matrix.cells[y][x]);
 }

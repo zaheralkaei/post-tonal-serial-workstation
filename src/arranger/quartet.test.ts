@@ -118,6 +118,27 @@ describe('quartet assembler', () => {
     expect(cDur[0]).toBe(7);
   });
 
+  it('integral mode: every pitch class keeps the duration of its order number', () => {
+    const m = buildMatrix(series, 'schoenberg');
+    const score = assemble(m, palette, params({ determinism: 0.6 }));
+    const durOfPc = new Map<number, number>();
+    for (const v of VOICES) {
+      const evs = score.voices[v];
+      evs.slice(0, -1).forEach((e) => {
+        // pitch class from the absolute pitch; skip structural/stochastic rests
+        if (e.pitch === undefined) return;
+        const pc = ((e.pitch % 24) + 24) % 24;
+        if (durOfPc.has(pc)) expect(e.durUnits).toBe(durOfPc.get(pc));
+        else durOfPc.set(pc, e.durUnits);
+      });
+    }
+    // With no deviations, the prime read forward deploys the duration series
+    // in order, and its retrograde deploys it backwards.
+    const strict = assemble(m, palette, params({ determinism: 1 }));
+    expect(strict.voices.violinI.slice(0, 4).map((e) => e.durUnits)).toEqual([1, 2, 3, 4]);
+    expect(strict.voices.viola.slice(0, 3).map((e) => e.durUnits)).toEqual([7, 6, 5]);
+  });
+
   it('emits quarter-tone accidentals for microtonal pitches', () => {
     // series includes pitch class 3 (a quarter-tone), so the score must too.
     const m = buildMatrix(series, 'schoenberg');

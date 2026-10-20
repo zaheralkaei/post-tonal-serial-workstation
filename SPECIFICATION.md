@@ -202,11 +202,14 @@ An ordered set of *N* durations, each an integer multiple of a user-defined atom
                   └─── [ Independent ] ───────> Palette permuted by its own rotational array
 ```
 
-- **Integral (Boulez) coupling.** A pitch vector extracted from the matrix carries an *order of
-  index positions*; that same order is applied to the duration palette. "Retrograde rhythm" =
-  the palette read in the order of the retrograde pitch vector; "inverted rhythm" = the order
-  given by the inverted vector. The durations themselves never change — only their sequence —
-  which is exactly what makes the operation meaningful.
+- **Integral (Boulez) coupling.** As in *Structures Ia*, every pitch class carries an **order
+  number**: its position in the prime P₀. That number selects its duration from the palette, so
+  a given pitch always has the same length and every transformation of the row (transposition,
+  inversion, retrograde) carries the rhythm with it — the prime deploys the palette in order, its
+  retrograde deploys it backwards, and other forms permute it. The durations themselves never
+  change, only their order. A repeated pitch uses its first position; a pitch absent from P₀
+  (transposed forms of a short row leave its collection) takes the order number of the nearest
+  prime pitch, earlier positions winning ties. Silent palette slots therefore silence a pitch.
 - **Independent.** The duration palette is permuted by its **own rotational (Stravinsky)
   array**, since cyclic rotation *is* a meaningful rhythmic transform. Two additional native
   transforms are available: **Retrograde** (reverse the sequence) and **Augmentation /
@@ -249,9 +252,10 @@ A control `d ∈ [0%, 100%]` governs vector extraction.
 
 **Hybrid algorithm.** For `0 < d < 1`, at each step draw uniform `r ∈ [0,1)`: if `r < d`, emit
 the next cell of the voice's queued systematic vector and advance its pointer; otherwise emit a
-**constrained deviation** — a one-step walk to an adjacent cell within the current block, after
-which the systematic pointer resumes from the nearest position. `d = 1` reduces to Strict,
-`d = 0` to Stochastic.
+**constrained deviation** — a one-step move to one of the eight neighbours of the cell just
+played (wrapping at the matrix edges), after which the systematic pointer resumes from the
+nearest cell still ahead on the current vector. One cursor drives both, and every voice starts at
+the first cell of its own path. `d = 1` reduces to Strict, `d = 0` to Stochastic.
 
 ### 4.3 Voice Architecture, Register Mapping & Physical Safeguards
 
@@ -268,13 +272,18 @@ practical ceilings; overlap is intentional and idiomatic.
 **Pitch → register.** A matrix cell is an absolute 24-EDO pitch class. A **Registral Dispersion**
 parameter `D_reg ∈ [0.0, 1.0]` assigns the octave ("how jumpy"):
 
-- `D_reg = 0.0` — **smooth:** octave chosen to minimize the leap from the previous note in the
-  voice.
-- `D_reg = 1.0` — **dispersed:** pitch class mapped linearly across the instrument's range, so
-  it alone fixes the octave (matrix-faithful, jumpy).
-- Intermediate: `octave = round((1 − D_reg)·octave_smooth + D_reg·octave_linear)`.
+- `D_reg = 0.0` — **smooth:** favours the smallest leap from the previous note in the voice.
+- `D_reg = 1.0` — **dispersed:** pitch class mapped linearly across the preferred range, so it
+  alone fixes the octave (matrix-faithful, jumpy).
 
-Result is clamped to the preferred range, then the absolute range if needed.
+Every octave inside the instrument's absolute range is scored and the cheapest kept
+(distances in octaves):
+
+`cost = (1 − D_reg)·|leap from previous| + D_reg·|distance from linear target| + 3·(distance outside the preferred range)`
+
+The preferred-range term applies at every setting, so smooth lines cannot drift to the edge of
+the instrument; small excursions past a band edge remain possible when the alternative is a large
+leap. Ties go to the octave nearest the middle of the preferred range.
 
 **Voice-leading optimization.** When active, a melodic leap greater than one octave triggers
 octave transposition to keep the interval within registral bounds (relaxed at high `D_reg`).

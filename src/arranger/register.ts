@@ -40,11 +40,17 @@ const clampByOctave = (abs: number, lo: number, hi: number): number => {
   return v;
 };
 
-const nearestOctave = (pc: number, target: number): number =>
-  Math.round((target - pc) / EDO);
+/** Cost of sitting one octave outside the preferred band, in octaves of leap. */
+const OUTSIDE_WEIGHT = 3;
 
 /**
- * Place a pitch class into a concrete octave for a voice.
+ * Place a pitch class into a concrete octave for a voice by scoring every
+ * playable octave and keeping the cheapest:
+ *   (1 - D) · leap from the previous note      (smooth motion)
+ *   + D · distance from the linear target      (pitch class fixes register)
+ *   + OUTSIDE_WEIGHT · distance outside the preferred band
+ * The band penalty applies at every dispersion, so smooth lines no longer
+ * drift to the edge of the instrument. Distances are in octaves.
  * @param prev previous absolute pitch in this voice (for smooth motion)
  * @param dispersion D_reg in [0,1]: 0 = minimize leap, 1 = linear spread.
  */
@@ -55,12 +61,29 @@ export function placeOctave(
   dispersion: number,
 ): AbsPitch {
   const midPref = (range.prefLo + range.prefHi) / 2;
-  const smoothOct = nearestOctave(pc, prev ?? midPref);
+  const anchor = prev ?? midPref;
   const linearTarget = range.prefLo + (pc / (EDO - 1)) * (range.prefHi - range.prefLo);
-  const linearOct = nearestOctave(pc, linearTarget);
-  const o = Math.round((1 - dispersion) * smoothOct + dispersion * linearOct);
-  const abs = pc + o * EDO;
-  return clampByOctave(abs, range.absLo, range.absHi);
+
+  let best: AbsPitch | null = null;
+  let bestCost = Infinity;
+  const oLo = Math.ceil((range.absLo - pc) / EDO);
+  const oHi = Math.floor((range.absHi - pc) / EDO);
+  for (let o = oLo; o <= oHi; o++) {
+    const abs = pc + o * EDO;
+    const outside = Math.max(0, range.prefLo - abs, abs - range.prefHi);
+    const cost =
+      ((1 - dispersion) * Math.abs(abs - anchor) +
+        dispersion * Math.abs(abs - linearTarget) +
+        OUTSIDE_WEIGHT * outside) /
+      EDO;
+    const tieBreak = best !== null && cost === bestCost && Math.abs(abs - midPref) < Math.abs(best - midPref);
+    if (cost < bestCost || tieBreak) {
+      best = abs;
+      bestCost = cost;
+    }
+  }
+  // Only reachable if the playable range is narrower than an octave.
+  return best ?? clampByOctave(pc, range.absLo, range.absHi);
 }
 
 /**

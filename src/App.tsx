@@ -341,11 +341,11 @@ export function App() {
           </p>
           <div
             className="row"
-            title="Each note takes the next value in the duration series (cycling). Integral: the series direction follows each voice's pitch path (forward for P/I, reversed for R/RI). Independent: each voice runs its own copy per its direction/rotation below."
+            title="Integral (Boulez, Structures Ia): each pitch carries the duration at its position in the prime row, so a pitch always has the same length and transformed rows permute the rhythm with the pitches. Pitches not in the prime take the nearest prime pitch's duration. Independent: each voice steps through its own copy of the series per its direction/rotation below."
           >
             <label>Duration mode</label>
             <select value={params.durationMode} onChange={(e) => up('durationMode', e.target.value as GenParams['durationMode'])}>
-              <option value="integral">Integral (Boulez — follows pitch)</option>
+              <option value="integral">Integral (Boulez — each pitch has its duration)</option>
               <option value="independent">Independent (per-voice)</option>
             </select>
           </div>
@@ -376,11 +376,11 @@ export function App() {
           )}
           <Slider
             label="Determinism" value={params.determinism} onChange={(v) => up('determinism', v)}
-            title="100% reads the matrix paths in order; 0% is a random walk over neighbouring cells; values in between mix systematic reads with occasional one-step deviations."
+            title="100% reads the matrix paths in order. Below that, each note either continues the path or steps to a neighbour of the note just played, after which the path resumes from the nearest cell ahead. 0% is a pure random walk starting at the path's first cell."
           />
           <Slider
             label="Dispersion (jumpiness)" value={params.dispersion} onChange={(v) => up('dispersion', v)}
-            title="How octaves are chosen. 0% = pick the octave that minimizes the leap from the previous note (smooth); 100% = map the pitch class linearly across the instrument's range (wide, jumpy)."
+            title="How octaves are chosen. 0% = smallest leap from the previous note; 100% = the pitch class alone sets the register across the instrument's range (wide, jumpy). At every setting lines are kept near the instrument's preferred range."
           />
           <Slider
             label="Rest probability" value={params.restProbability} onChange={(v) => up('restProbability', v)}
@@ -509,7 +509,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
         <ul>
           <li><strong>Schoenberg</strong> — classical twelve-tone matrices (Prime, Inversion, Retrograde, Retrograde-Inversion), generalised to any series length.</li>
           <li><strong>Stravinsky</strong> — rotational arrays, where each rotation is transposed back to the starting pitch and harmony is drawn from the verticals.</li>
-          <li><strong>Boulez</strong> — integral (total) serialism: rhythm serialised as a duration palette whose deployment order is permuted alongside the pitches.</li>
+          <li><strong>Boulez</strong> — integral (total) serialism: each pitch carries its own duration, so every transformation of the row also transforms the rhythm.</li>
           <li><strong>Wyschnegradsky</strong> — full 24-tone quarter-tone microtonality (24-EDO).</li>
         </ul>
         <p>
