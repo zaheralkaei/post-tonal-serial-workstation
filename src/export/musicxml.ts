@@ -43,14 +43,41 @@ function accidentalName(alter: number): string | null {
   }
 }
 
-function noteType(durDiv: number, divPerQuarter: number): string {
-  const q = durDiv / divPerQuarter;
-  if (q >= 4) return 'whole';
-  if (q >= 2) return 'half';
-  if (q >= 1) return 'quarter';
-  if (q >= 0.5) return 'eighth';
-  if (q >= 0.25) return '16th';
-  return '32nd';
+export interface NotatedValue {
+  div: number; // length in divisions
+  type: string; // MusicXML <type>
+  dots: 0 | 1;
+}
+
+/**
+ * Note values that can be written as a single symbol at this resolution
+ * (plain or single-dotted), longest first. Always includes the t0 value itself,
+ * which is exactly one division.
+ */
+export function notatableValues(divPerQuarter: number): NotatedValue[] {
+  const bases: [string, number][] = [
+    ['whole', 4], ['half', 2], ['quarter', 1], ['eighth', 0.5], ['16th', 0.25], ['32nd', 0.125],
+  ];
+  const out: NotatedValue[] = [];
+  for (const [type, quarters] of bases) {
+    for (const dots of [0, 1] as const) {
+      const div = quarters * divPerQuarter * (dots ? 1.5 : 1);
+      if (Number.isInteger(div) && div >= 1) out.push({ div, type, dots });
+    }
+  }
+  return out.sort((a, b) => b.div - a.div);
+}
+
+/** Split a length into notatable values (greedy, longest first), to be tied. */
+export function splitDuration(div: number, values: NotatedValue[]): NotatedValue[] {
+  const parts: NotatedValue[] = [];
+  let left = div;
+  while (left > 0) {
+    const v = values.find((x) => x.div <= left)!; // a 1-division value always exists
+    parts.push(v);
+    left -= v.div;
+  }
+  return parts;
 }
 
 interface Seg {
@@ -99,40 +126,51 @@ export function toMusicXML(score: ScoreModel): string {
     return perMeasure;
   };
 
-  const renderNote = (seg: Seg): string => {
-    const tieEls: string[] = [];
-    const tiedEls: string[] = [];
-    if (seg.tieStop) {
-      tieEls.push('<tie type="stop"/>');
-      tiedEls.push('<tied type="stop"/>');
-    }
-    if (seg.tieStart) {
-      tieEls.push('<tie type="start"/>');
-      tiedEls.push('<tied type="start"/>');
-    }
-    const type = noteType(seg.dur, divPerQuarter);
-    if (seg.pitch === undefined) {
-      return (
-        `        <note>\n          <rest/>\n          <duration>${seg.dur}</duration>\n` +
-        `          <voice>1</voice>\n          <type>${type}</type>\n        </note>`
-      );
-    }
-    const { step, alter, octave } = absToPitch(seg.pitch);
-    const alterEl = alter !== 0 ? `\n            <alter>${alter}</alter>` : '';
-    const acc = accidentalName(alter);
-    // Suppress the accidental on the tail of a tie (it's already shown on the start).
-    const accEl = acc && !seg.tieStop ? `\n          <accidental>${acc}</accidental>` : '';
-    const notations = tiedEls.length ? `\n          <notations>${tiedEls.join('')}</notations>` : '';
-    return (
-      `        <note>\n` +
-      `          <pitch>\n            <step>${step}</step>${alterEl}\n            <octave>${octave}</octave>\n          </pitch>\n` +
-      `          <duration>${seg.dur}</duration>\n` +
-      tieEls.map((t) => `          ${t}\n`).join('') +
-      `          <voice>1</voice>\n` +
-      `          <type>${type}</type>${accEl}${notations}\n` +
-      `        </note>`
-    );
-  };
+  const values = notatableValues(divPerQuarter);
+
+  // A segment (already split at barlines) becomes one or more notes whose
+  // written value matches their length; the pieces are tied together.
+  const renderNote = (seg: Seg): string =>
+    splitDuration(seg.dur, values)
+      .map((v, k, parts) => {
+        const typeEls = `          <type>${v.type}</type>\n` + (v.dots ? '          <dot/>\n' : '');
+        if (seg.pitch === undefined) {
+          return (
+            `        <note>\n          <rest/>\n          <duration>${v.div}</duration>\n` +
+            `          <voice>1</voice>\n${typeEls}        </note>`
+          );
+        }
+        const tieStop = k === 0 ? seg.tieStop : true;
+        const tieStart = k === parts.length - 1 ? seg.tieStart : true;
+        const tieEls: string[] = [];
+        const tiedEls: string[] = [];
+        if (tieStop) {
+          tieEls.push('<tie type="stop"/>');
+          tiedEls.push('<tied type="stop"/>');
+        }
+        if (tieStart) {
+          tieEls.push('<tie type="start"/>');
+          tiedEls.push('<tied type="start"/>');
+        }
+        const { step, alter, octave } = absToPitch(seg.pitch);
+        const alterEl = alter !== 0 ? `\n            <alter>${alter}</alter>` : '';
+        const acc = accidentalName(alter);
+        // Only the first written note of a sounding pitch carries the accidental.
+        const accEl = acc && !tieStop ? `          <accidental>${acc}</accidental>\n` : '';
+        const notations = tiedEls.length ? `          <notations>${tiedEls.join('')}</notations>\n` : '';
+        return (
+          `        <note>\n` +
+          `          <pitch>\n            <step>${step}</step>${alterEl}\n            <octave>${octave}</octave>\n          </pitch>\n` +
+          `          <duration>${v.div}</duration>\n` +
+          tieEls.map((t) => `          ${t}\n`).join('') +
+          `          <voice>1</voice>\n` +
+          typeEls +
+          accEl +
+          notations +
+          `        </note>`
+        );
+      })
+      .join('\n');
 
   const renderPart = (voice: VoiceId): string => {
     const meta = VOICE_META[voice];

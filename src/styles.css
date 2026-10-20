@@ -166,6 +166,7 @@ button.primary.dirty { background: var(--quarter); border-color: var(--quarter);
 .mbtn.wide { flex: 1; padding: 5px 8px; font-size: 12px; }
 
 .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+.hint.err { color: #e0574f; }
 .voicemap .row label { text-transform: capitalize; }
 
 .scorepanel { margin-top: 16px; }

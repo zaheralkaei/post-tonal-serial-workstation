@@ -6,9 +6,43 @@ import type { AbsPitch } from '../types';
 
 const ABS_A4 = 4 * EDO + 9 * 2; // 114
 
+/** Peak level of one voice at velocity 1; four voices must fit under 0 dBFS. */
+const VOICE_PEAK = 0.15;
+const MAX_ATTACK = 0.05; // bow onset for notes long enough to afford it
+const MAX_RELEASE = 0.25;
+
 /** f = 440 * 2^(k/24), k = quarter-tone steps relative to A4 (§5). */
 export function freq(abs: AbsPitch): number {
   return 440 * Math.pow(2, (abs - ABS_A4) / EDO);
+}
+
+/**
+ * Master bus every voice connects to: a gain stage into a fast limiter, so
+ * dense four-voice passages cannot clip the output.
+ */
+export function createMasterBus(ctx: BaseAudioContext): GainNode {
+  const input = ctx.createGain();
+  input.gain.value = 1;
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.knee.value = 4;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.002;
+  limiter.release.value = 0.2;
+  input.connect(limiter);
+  limiter.connect(ctx.destination);
+  return input;
+}
+
+/**
+ * Note envelope timings. Attack and release scale down with the note so short
+ * notes still sound inside their own span (attack <= 30%, release <= 40%).
+ */
+export function envelopeTimes(durationSec: number): { attack: number; release: number } {
+  return {
+    attack: Math.min(MAX_ATTACK, durationSec * 0.3),
+    release: Math.min(MAX_RELEASE, durationSec * 0.4),
+  };
 }
 
 /**
@@ -17,7 +51,7 @@ export function freq(abs: AbsPitch): number {
  * envelope, with subtle vibrato. Handles sustained microtonal pitches well.
  */
 export function playString(
-  ctx: AudioContext,
+  ctx: BaseAudioContext,
   out: AudioNode,
   frequency: number,
   startTime: number,
@@ -48,14 +82,13 @@ export function playString(
   filter.Q.value = 0.7;
 
   const gain = ctx.createGain();
-  const peak = 0.22 * velocity;
-  const attack = 0.05; // bow onset
-  const release = Math.min(0.25, durationSec * 0.4);
+  const peak = VOICE_PEAK * velocity;
+  const { attack, release } = envelopeTimes(durationSec);
   const end = startTime + durationSec;
 
   gain.gain.setValueAtTime(0.0001, startTime);
   gain.gain.linearRampToValueAtTime(peak, startTime + attack);
-  gain.gain.setValueAtTime(peak, Math.max(startTime + attack, end - release));
+  gain.gain.setValueAtTime(peak, end - release); // >= startTime + attack by construction
   gain.gain.exponentialRampToValueAtTime(0.0001, end);
 
   osc1.connect(filter);

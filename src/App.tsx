@@ -134,8 +134,22 @@ export function App() {
     }));
   };
 
+  // Both randomizers use the current seed (so a seed reproduces its result),
+  // then advance it so the next click produces something new.
+  const [seriesNotice, setSeriesNotice] = useState<string | null>(null);
+
   const randomizeSeries = () => {
+    const pool = semitonesOnly ? 12 : 24;
+    if (params.strict && series.length > pool) {
+      setSeriesNotice(
+        `Strict needs ${series.length} different pitches, but semitones-only offers ${pool}. ` +
+          'Allow quarter-tones or turn off strict.',
+      );
+      return;
+    }
+    setSeriesNotice(null);
     setSeries(randomize(series.length, { seed, semitonesOnly, strict: params.strict }));
+    setSeed((s) => s + 1);
   };
 
   const randomizePalette = () => {
@@ -144,6 +158,7 @@ export function App() {
       ...p,
       multipliers: p.multipliers.map(() => 1 + rng.int(series.length)),
     }));
+    setSeed((s) => s + 1);
   };
 
   const togglePlay = async () => {
@@ -235,12 +250,18 @@ export function App() {
             ))}
           </div>
           <div className="row">
-            <button onClick={randomizeSeries}>🎲 Randomize series</button>
+            <button
+              onClick={randomizeSeries}
+              title="Draw a random series from the current seed, then advance the seed so the next click differs"
+            >
+              🎲 Randomize series
+            </button>
             <label className="chk">
               <input type="checkbox" checked={semitonesOnly} onChange={(e) => setSemitonesOnly(e.target.checked)} />
               semitones only
             </label>
           </div>
+          {seriesNotice && <p className="hint err">{seriesNotice}</p>}
           <div className="row">
             <label>Seed</label>
             <input type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} />
@@ -282,7 +303,7 @@ export function App() {
             </select>
             <button
               onClick={randomizePalette}
-              title="Replace every duration value with a random length from 1 to N × t₀ (rests and unit unchanged)"
+              title="Replace every duration value with a random length from 1 to N × t₀ (rests and unit unchanged). Uses the current seed, then advances it."
             >
               🎲 Randomize durations
             </button>

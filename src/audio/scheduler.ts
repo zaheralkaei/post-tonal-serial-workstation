@@ -3,7 +3,7 @@
 
 import type { NoteValue, ScoreModel, VoiceId } from '../types';
 import { VOICES } from '../types';
-import { freq, playString } from './synth';
+import { createMasterBus, freq, playString } from './synth';
 
 const UNIT_WHOLE: Record<NoteValue, number> = {
   '4n': 1 / 4,
@@ -87,9 +87,7 @@ export function createPlayer(
     stop();
     ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     if (ctx.state === 'suspended') await ctx.resume();
-    master = ctx.createGain();
-    master.gain.value = 0.9;
-    master.connect(ctx.destination);
+    master = createMasterBus(ctx);
     events = flatten(getScore());
     cursor = 0;
     startClock = ctx.currentTime + 0.1;
